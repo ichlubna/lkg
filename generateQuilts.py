@@ -29,10 +29,10 @@ class Convertor:
     videoStart = "00:00:00"
     tmpDir = ""
     doFocusing = False
+    inputFocus = 0.0
 
     focusSteps = 10
     focusRange = 0.4
-
     focusStep = 0.01
 
     def parseArguments(self):
@@ -42,6 +42,7 @@ class Convertor:
         parser.add_argument('--outputDir', default="./", nargs='?', help='output directory')
         parser.add_argument('--quiltSize', default="5x9", nargs='?', help='size of the quilt in images, WxH')
         parser.add_argument('--videoStart', default="00:00:00", nargs='?', help='where should the frames be taken from, hh:mm:ss')
+        parser.add_argument('--focus', default="0.0", type=float, nargs='?', help='creates refocused quilt to the specified distance')
         parser.add_argument('-f',  action='store_true', help='performs focusing')
         args = parser.parse_args()
         self.inputDir = os.path.join(args.inputDir, '')
@@ -51,6 +52,7 @@ class Convertor:
         self.quiltResolution = [int(strQuiltRes[0]), int(strQuiltRes[1])]
         self.videoStart = args.videoStart
         self.doFocusing = args.f
+        self.inputFocus = args.focus
 
     def analyzeInput(self):
         if(self.inputVideo):
@@ -68,7 +70,6 @@ class Convertor:
         imageDepth = int(result.stdout)
 
     def runBash(self,command):
-        #result = subprocess.run(command.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         result = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         return result
 
@@ -101,7 +102,7 @@ class Convertor:
         quiltLength = self.quiltResolution[0]*self.quiltResolution[1]
         for i in range(len(self.inputFiles)):
             imageFocus = focus*(1.0-2*i/quiltLength)*self.imageResolution[0]
-            self.runBash(self.IMConvertPath+" -distort ScaleRotateTranslate '0,0 1 0 "+str(imageFocus)+",0' -virtual-pixel edge "+inDir+self.inputFiles[i]+" "+outDir+self.inputFiles[i])
+            self.runBash(self.IMConvertPath+" -distort ScaleRotateTranslate '0,0 1 0 "+str(-imageFocus)+",0' -virtual-pixel edge "+inDir+self.inputFiles[i]+" "+outDir+self.inputFiles[i])
 
     def refocusAndExport(self, outDir, name, focus):
         refocusDir = self.tmpDir+"refocus/"
@@ -140,6 +141,8 @@ class Convertor:
         self.parseArguments()
         self.analyzeInput()
         self.exportQuiltImage(self.inputDir, self.outputDir, "basicQuilt.png")
+        if(self.inputFocus != 0.0):
+            self.refocusAndExport(self.outputDir, "refocusedQuilt-"+str(self.inputFocus)+".png", self.inputFocus)
         if(self.doFocusing):
             dogFocus = round(self.dogFocusing(),4)
             self.refocusAndExport(self.outputDir, "dogRefocusedQuilt-"+str(dogFocus)+".png", dogFocus)
