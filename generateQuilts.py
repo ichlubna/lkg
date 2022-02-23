@@ -6,6 +6,7 @@ import tempfile
 import shutil
 import shlex
 import traceback
+import re
 
 class Convertor:
     #https://github.com/zzhanghub/gicd
@@ -23,22 +24,25 @@ class Convertor:
     inputExtension = ""
     inputFiles = []
     imageResolution = [1920, 1080]
+    imageDepth=8
     quiltResolution = [5, 9]
     videoStart = "00:00:00"
     tmpDir = ""
     doFocusing = False
 
-    focusStep = 0.025
+    focusSteps = 10
     focusRange = 0.4
+
+    focusStep = 0.01
 
     def parseArguments(self):
         parser = argparse.ArgumentParser(description='Converts set of 45 images into quilts with...')
-        parser.add_argument('--inputDir', metavar='--inputDir', default="./", help='input directory with numbered images')
-        parser.add_argument('--inputVideo', metavar='--inputVideo', default="", help='input video file - overwrites the directory')
-        parser.add_argument('--outputDir', metavar='--outputDir', default="./", nargs='?', help='output directory')
-        parser.add_argument('--quiltSize', metavar='--quiltSize', default="5x9", nargs='?', help='size of the quilt in images, WxH')
-        parser.add_argument('--videoStart', metavar='--videoStart', default="00:00:00", nargs='?', help='where should the frames be taken from, hh:mm:ss')
-        parser.add_argument('-f',  action='store_true', help='Performs focusing')
+        parser.add_argument('--inputDir',  default="./", help='input directory with numbered images')
+        parser.add_argument('--inputVideo', default="", help='input video file - overwrites the directory')
+        parser.add_argument('--outputDir', default="./", nargs='?', help='output directory')
+        parser.add_argument('--quiltSize', default="5x9", nargs='?', help='size of the quilt in images, WxH')
+        parser.add_argument('--videoStart', default="00:00:00", nargs='?', help='where should the frames be taken from, hh:mm:ss')
+        parser.add_argument('-f',  action='store_true', help='performs focusing')
         args = parser.parse_args()
         self.inputDir = os.path.join(args.inputDir, '')
         self.inputVideo = args.inputVideo
@@ -50,7 +54,7 @@ class Convertor:
 
     def analyzeInput(self):
         if(self.inputVideo):
-            self.inputDir = self.tmpDir+"/videoFrames/"
+            self.inputDir = self.tmpDir+"videoFrames/"
             os.mkdir(self.inputDir)
             self.runBash("ffmpeg -i "+self.inputVideo+" -ss "+self.videoStart+" -frames:v 45 "+self.inputDir+"%04d.png")
         self.inputFiles = sorted(os.listdir(self.inputDir))
@@ -60,6 +64,8 @@ class Convertor:
         result = self.runBash(self.IMIdentifyPath+" -format %[fx:w]|%[fx:h] "+self.inputDir+self.inputFiles[0])
         strRes = result.stdout.split('|')
         self.imageResolution = [int(strRes[0]), int(strRes[1])]
+        result = self.runBash(self.IMIdentifyPath+" -format %[bit-depth] "+self.inputDir+self.inputFiles[0])
+        imageDepth = int(result.stdout)
 
     def runBash(self,command):
         #result = subprocess.run(command.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -67,20 +73,25 @@ class Convertor:
         return result
 
     def exportQuiltImage(self, inDir, outDir, name):
-        self.runBash(self.IMMontagePath+" "+inDir+"*"+self.inputExtension+" -tile "+str(self.quiltResolution[0])+"x"+str(self.quiltResolution[1])+" -geometry "+str(self.imageResolution[0])+"x"+str(self.imageResolution[1])+"+0+0 "+outDir+name)
-        #TODO define orientation and maybe flip + add note to help 
+        self.runBash(self.IMMontagePath+" "+inDir+"*"+self.inputExtension+" -tile "+str(self.quiltResolution[0])+"x"+str(self.quiltResolution[1])+" -geometry "+str(self.imageResolution[0])+"x"+str(self.imageResolution[1])+"+0+0 "+self.tmpDir+name)
+        self.runBash(self.IMConvertPath+" "+self.tmpDir+name+" -flop -depth "+str(self.imageDepth)+" "+outDir+name)
+
+    def averageImageEnergy(self,path):
+        result = self.runBash(self.IMConvertPath+" "+path+" -resize 1x1 txt:-")
+        energy = float(re.search(r'\((.*?)\)',result.stdout).group(1))
+        return energy
 
     def dogFocusing(self):
-        testDir = tmpDir+"/dog/"
+        testDir = self.tmpDir+"dog/"
         testImagePath = testDir+"testFocus.png"
         testDogPath = testDir+"testDog.png"
         minimal = [99999999.0, 0]
-        for f in range(-focusRange, focusRange, focusForceStep):
+        for i in range(0, self.focusSteps):
+            f = -self.focusRange+i*self.focusStep
             os.mkdir(testDir)
             self.runBash(self.quiltToNativePath+" --input "+self.outputDir+"basicQuilt.png --focus "+str(f)+" --output "+testImagePath)
             self.runBash(self.IMConvertPath+" "+testImagePath+" -colorspace Gray -morphology Convolve DoG:10,0,10 -tint 0 "+testDogPath)
-            result = runBash("echo $("+self.IMConvertPath+" "+testDogPath+" -resize 1x1 txt:- | grep -o -P '(?<=\().*?(?=\))' | head -n 1)")
-            energy = float(result.stdout)
+            energy = self.averageImageEnergy(testDogPath)
             if energy < minimal[0]:
                 minimal = [energy, f]
             shutil.rmtree(testDir)
@@ -93,25 +104,32 @@ class Convertor:
             self.runBash(self.IMConvertPath+" -distort ScaleRotateTranslate '0,0 1 0 "+str(imageFocus)+",0' -virtual-pixel edge "+inDir+self.inputFiles[i]+" "+outDir+self.inputFiles[i])
 
     def refocusAndExport(self, outDir, name, focus):
-        refocusDir = self.tmpDir+"/refocus/"
+        refocusDir = self.tmpDir+"refocus/"
         os.mkdir(refocusDir)
-        self.refocusImages(self.inputDi, refocusDir, focus)
+        self.refocusImages(self.inputDir, refocusDir, focus)
         self.exportQuiltImage(refocusDir, outDir, name)
         shutil.rmtree(refocusDir)
 
     def deepFocusing(self):
-        saliencyDir = self.tmpDir+"/saliency/"
+        saliencyDir = self.tmpDir+"saliency/"
         os.mkdir(saliencyDir)
-        self.runBash("python "+self.gicdPath+"test.py --model GICD --input_root "+self.inputDir+" --param_path "+self.gicdPath+"gicd_ginet.pth --save_root "+saliencyDir)
-        refSalDir - self.tmpDir+"/refSal/"
+        inSalDir = self.tmpDir+"inSalDir/"
+        os.mkdir(inSalDir)
+        inSalTestDir = inSalDir+"test/"
+        saliencyTestDir = saliencyDir+"test/"
+        os.mkdir(inSalTestDir)
+        for f in self.inputFiles:
+            shutil.copy(self.inputDir+f, inSalTestDir)
+        r=self.runBash("python "+self.gicdPath+"test.py --model GICD --input_root "+inSalDir+" --param_path "+self.gicdPath+"gicd_ginet.pth --save_root "+saliencyDir)
+        refSalDir = self.tmpDir+"refSal/"
         saliencySumPath = self.tmpDir+"saliencySum.png"
         maximal = [-99999999.0, 0]
-        for f in range(-focusRange, focusRange, focusStep):
+        for i in range(0, self.focusSteps):
+            f = -self.focusRange+i*self.focusStep
             os.mkdir(refSalDir)
-            refocusImages(saliencyDir, refSalDir, f)
-            runBash(self.IMConvertPath+" "+refSalDir+"* -compose multiply -composite "+saliencySumPath)
-            result = runBash("echo $("+self.IMConvertPath+" "+saliencySumPath+" -resize 1x1 txt:- | grep -o -P '(?<=\().*?(?=\))' | head -n 1)")
-            energy = float(result.stdout)
+            self.refocusImages(saliencyTestDir, refSalDir, f)
+            self.runBash(self.IMConvertPath+" "+refSalDir+"* -compose multiply -composite "+saliencySumPath)
+            energy = self.averageImageEnergy(saliencySumPath)
             if energy > maximal[0]:
                 maximal = [energy, f]
             shutil.rmtree(refSalDir)
@@ -123,13 +141,14 @@ class Convertor:
         self.analyzeInput()
         self.exportQuiltImage(self.inputDir, self.outputDir, "basicQuilt.png")
         if(self.doFocusing):
-            dogFocus = self.dogFocusing()
-            self.refocusAndExport(self.outputDir, "dogRefocusedQuilt.png", dogFocus)
-            deepFocus = self.deepFocusing()
-            self.refocusAndExport(self.outputDir, "deepRefocusedQuilt.png", deepFocus)
+            dogFocus = round(self.dogFocusing(),4)
+            self.refocusAndExport(self.outputDir, "dogRefocusedQuilt-"+str(dogFocus)+".png", dogFocus)
+            deepFocus = round(self.deepFocusing(),4)
+            self.refocusAndExport(self.outputDir, "deepRefocusedQuilt-"+str(deepFocus)+".png", deepFocus)
 
     def __init__(self):
         self.tmpDir = os.path.join(tempfile.mkdtemp(), '')
+        self.focusStep = 2*self.focusRange/self.focusSteps
 
     def __del__(self):
         shutil.rmtree(self.tmpDir)
