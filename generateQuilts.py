@@ -7,12 +7,15 @@ import shutil
 import shlex
 import traceback
 import re
+import math
 
 class Convertor:
-    #https://github.com/zzhanghub/gicd
+    #https://github.com/zzhanghub/gicd/tree/b58759141b61ff7aec9affbbfe704a4418736ff5
     gicdPath = "external/gicd-master/"
     #https://github.com/dormon/3DApps/blob/master/src/quiltToNative.cpp
     quiltToNativePath = "external/dormon/quiltToNative"
+    #https://github.com/scott89/deeplens_eval/tree/3dbc1b04ba082b3b6b1dc0d944b3d18fa542ae2c
+    deepLensPath = "external/deeplens_eval-master/"
     #https://imagemagick.org/
     IMMontagePath = "montage"
     IMConvertPath = "convert"
@@ -77,10 +80,37 @@ class Convertor:
         self.runBash(self.IMMontagePath+" "+inDir+"*"+self.inputExtension+" -tile "+str(self.quiltResolution[0])+"x"+str(self.quiltResolution[1])+" -geometry "+str(self.imageResolution[0])+"x"+str(self.imageResolution[1])+"+0+0 "+self.tmpDir+name)
         self.runBash(self.IMConvertPath+" "+self.tmpDir+name+" -flop -depth "+str(self.imageDepth)+" "+outDir+name)
 
-    def averageImageEnergy(self,path):
+    def averageImageEnergy(self, path):
         result = self.runBash(self.IMConvertPath+" "+path+" -resize 1x1 txt:-")
         energy = float(re.search(r'\((.*?)\)',result.stdout).group(1))
         return energy
+
+    def distance(self, vec1, vec2):
+        delta = [vec1[0]-vec2[0], vec1[1]-vec2[1]]
+        return math.sqrt(delta[0]*delta[0] + delta[1]+delta[1])
+
+   def getCenterCoordinate(self, path):
+        centerImagePath = self.tmpDir+"centerImage.png"
+        #maybe dilate
+        result = self.runBash("convert "+path+" -threshold 50% -median 20 -type bilevel txt:-")
+        pixels = result.stdout.splitlines()
+        del result
+        xCoords = []
+        yCoords = []
+        for pixel in pixels:
+            if "gray(255)" in pixel:
+               coords = pixel.split(":")[0].split(",")
+               xCoords.append(int(coords[0]))
+               yCoords.append(int(coords[1]))
+        avg = [sum(xCoords) / len(xCoords), sum(yCoords) / len(yCoords)]
+        closest = [[0,0],9999999]
+        for i in range(0, len(xCoords)):
+            coords = [xCoords[i], yCoords[i]]
+            d = self.distance(avg, coords)
+            if(closest[1] > d):
+                closest = [coords, d]
+        #make sure it lies inside the area - closest white px?
+        return closest[0]
 
     def dogFocusing(self):
         testDir = self.tmpDir+"dog/"
@@ -96,7 +126,7 @@ class Convertor:
             if energy < minimal[0]:
                 minimal = [energy, f]
             shutil.rmtree(testDir)
-        return minimal[1]
+        return minimal[1], [0,0]
 
     def refocusImages(self, inDir, outDir, focus):
         quiltLength = self.quiltResolution[0]*self.quiltResolution[1]
@@ -119,6 +149,7 @@ class Convertor:
         inSalTestDir = inSalDir+"test/"
         saliencyTestDir = saliencyDir+"test/"
         os.mkdir(inSalTestDir)
+        resultingSaliencyMap = self.tmpDir+"saliencyMap.png"
         for f in self.inputFiles:
             shutil.copy(self.inputDir+f, inSalTestDir)
         r=self.runBash("python "+self.gicdPath+"test.py --model GICD --input_root "+inSalDir+" --param_path "+self.gicdPath+"gicd_ginet.pth --save_root "+saliencyDir)
@@ -129,13 +160,15 @@ class Convertor:
             f = -self.focusRange+i*self.focusStep
             os.mkdir(refSalDir)
             self.refocusImages(saliencyTestDir, refSalDir, f)
-            self.runBash(self.IMConvertPath+" "+refSalDir+"* -compose multiply -composite "+saliencySumPath)
+            self.runBash(self.IMConvertPath+" "+refSalDir+"* -background None -compose Multiply -layers Flatten "+saliencySumPath)
             energy = self.averageImageEnergy(saliencySumPath)
             if energy > maximal[0]:
                 maximal = [energy, f]
+                shutil.copy(saliencySumPath, resultingSaliencyMap)
             shutil.rmtree(refSalDir)
         shutil.rmtree(saliencyDir)
-        return maximal[1]
+        focusingPoint = self.getCenterCoordinate(resultingSaliencyMap)
+        return maximal[1], focusingPoint
 
     def run(self):
         self.parseArguments()
@@ -144,9 +177,9 @@ class Convertor:
         if(self.inputFocus != 0.0):
             self.refocusAndExport(self.outputDir, "refocusedQuilt-"+str(self.inputFocus)+".png", self.inputFocus)
         if(self.doFocusing):
-            dogFocus = round(self.dogFocusing(),4)
+            dogFocus, dogPoint = round(self.dogFocusing(),4)
             self.refocusAndExport(self.outputDir, "dogRefocusedQuilt-"+str(dogFocus)+".png", dogFocus)
-            deepFocus = round(self.deepFocusing(),4)
+            deepFocus, deepPoint = round(self.deepFocusing(),4)
             self.refocusAndExport(self.outputDir, "deepRefocusedQuilt-"+str(deepFocus)+".png", deepFocus)
 
     def __init__(self):

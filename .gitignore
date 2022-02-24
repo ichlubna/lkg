@@ -1,0 +1,6 @@
+*.png
+*.jpg
+data/*
+external/*
+!external/deeplens-patches
+!.gitignore

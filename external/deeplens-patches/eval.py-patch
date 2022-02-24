@@ -1,0 +1,20 @@
+--- evalORIG.py	2022-02-24 11:38:07.688735751 +0100
++++ eval.py	2022-02-24 11:19:34.494781376 +0100
+@@ -4,6 +4,7 @@
+ from proto.eval_config_pb2 import EvalConfig
+ from core import evaluator_interactive as evaluator
+ import os
++import sys
+ tf.logging.set_verbosity(tf.logging.INFO)
+ 
+ flags = tf.app.flags
+@@ -26,8 +27,7 @@
+ 
+ def main():
+     eval_config = get_configs()
+-    evaluator.evaluate(eval_config)
+-
++    evaluator.evaluate(eval_config, int(sys.argv[1]), int(sys.argv[2]))
+ 
+ 
+ if __name__ == '__main__':

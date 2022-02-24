@@ -1,0 +1,32 @@
+--- evaluator_interactiveORIG.py	2022-02-24 11:38:21.002030084 +0100
++++ core/evaluator_interactive.py	2022-02-24 11:22:38.534262617 +0100
+@@ -83,7 +83,7 @@
+ 
+     return pre_dof, pre_depth
+ 
+-def evaluate(eval_config):
++def evaluate(eval_config, x, y):
+     run_dof_func, run_depth_func = construct_graph(eval_config)
+     image_path = eval_config.image_path
+     start_id = 0
+@@ -104,7 +104,11 @@
+     plt.figure(3)
+     depth_handle = plt.imshow(pre_depth[0,:,:,0])
+     renderdof = RenderDoF(im_handle, depth_handle, slider, im, run_dof_func, run_depth_func, start_id, image_names)
+-    plt.show()
++    
++    im.set_focal_point(x,y)
++    dof = renderdof.render()
++    cv2.imwrite("./test.png", dof*255)
++    #plt.show()
+ 
+ def _normalize(x):
+     x = x.astype(np.float32)
+@@ -197,6 +201,7 @@
+         #self.im_handle.set_data(im_640[:,:,-1::-1])
+         #self.im_handle.set_data(blured_im)
+         self.im_handle.figure.canvas.draw()
++        return dof
+ 
+ 
+     def on_key(self, event):
