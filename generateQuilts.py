@@ -72,8 +72,8 @@ class Convertor:
         result = self.runBash(self.IMIdentifyPath+" -format %[bit-depth] "+self.inputDir+self.inputFiles[0])
         imageDepth = int(result.stdout)
 
-    def runBash(self,command):
-        result = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    def runBash(self,command,workingDir="./"):
+        result = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=workingDir)
         return result
 
     def exportQuiltImage(self, inDir, outDir, name):
@@ -87,9 +87,9 @@ class Convertor:
 
     def distance(self, vec1, vec2):
         delta = [vec1[0]-vec2[0], vec1[1]-vec2[1]]
-        return math.sqrt(delta[0]*delta[0] + delta[1]+delta[1])
+        return math.sqrt(delta[0] ** 2 + delta[1] ** 2)
 
-   def getCenterCoordinate(self, path):
+    def getCenterCoordinate(self, path):
         centerImagePath = self.tmpDir+"centerImage.png"
         #maybe dilate
         result = self.runBash("convert "+path+" -threshold 50% -median 20 -type bilevel txt:-")
@@ -134,11 +134,24 @@ class Convertor:
             imageFocus = focus*(1.0-2*i/quiltLength)*self.imageResolution[0]
             self.runBash(self.IMConvertPath+" -distort ScaleRotateTranslate '0,0 1 0 "+str(-imageFocus)+",0' -virtual-pixel edge "+inDir+self.inputFiles[i]+" "+outDir+self.inputFiles[i])
 
-    def refocusAndExport(self, outDir, name, focus):
+    def dofImages(self, inDir, outDir, coords):
+        for f in self.inputFiles:
+            inputFilePath = self.deepLensPath+"data/imgs/"+f
+            shutil.copy(inDir+f, inputFilePath)
+            r = self.runBash("python2.7 "+"eval.py "+str(coords[0])+" "+str(coords[1]), self.deepLensPath)
+            shutil.move(self.deepLensPath+"test.png", outDir+f)
+            os.remove(inputFilePath)
+
+    def refocusAndExport(self, outDir, name, focus, dofPoint=None):
         refocusDir = self.tmpDir+"refocus/"
         os.mkdir(refocusDir)
         self.refocusImages(self.inputDir, refocusDir, focus)
         self.exportQuiltImage(refocusDir, outDir, name)
+        if dofPoint:
+            dofDir = self.tmpDir+"dof/"
+            os.mkdir(dofDir)
+            self.dofImages(refocusDir, dofDir, dofPoint)
+            self.exportQuiltImage(dofDir, outDir, "DoF"+name)
         shutil.rmtree(refocusDir)
 
     def deepFocusing(self):
@@ -177,10 +190,10 @@ class Convertor:
         if(self.inputFocus != 0.0):
             self.refocusAndExport(self.outputDir, "refocusedQuilt-"+str(self.inputFocus)+".png", self.inputFocus)
         if(self.doFocusing):
-            dogFocus, dogPoint = round(self.dogFocusing(),4)
-            self.refocusAndExport(self.outputDir, "dogRefocusedQuilt-"+str(dogFocus)+".png", dogFocus)
-            deepFocus, deepPoint = round(self.deepFocusing(),4)
-            self.refocusAndExport(self.outputDir, "deepRefocusedQuilt-"+str(deepFocus)+".png", deepFocus)
+            dogFocus, dogPoint = self.dogFocusing()
+            self.refocusAndExport(self.outputDir, "dogRefocusedQuilt-"+str(round(dogFocus,4))+".png", dogFocus)
+            deepFocus, deepPoint = self.deepFocusing()
+            self.refocusAndExport(self.outputDir, "deepRefocusedQuilt-"+str(round(deepFocus,4))+".png", deepFocus, deepPoint)
 
     def __init__(self):
         self.tmpDir = os.path.join(tempfile.mkdtemp(), '')
