@@ -20,6 +20,7 @@ class Convertor:
     IMMontagePath = "montage"
     IMConvertPath = "convert"
     IMIdentifyPath = "identify"
+    IMMagickPath = "magick"
 
     inputDir = ""
     inputVideo = ""
@@ -109,8 +110,31 @@ class Convertor:
             d = self.distance(avg, coords)
             if(closest[1] > d):
                 closest = [coords, d]
-        #make sure it lies inside the area - closest white px?
         return closest[0]
+
+    def getFocusMap(self, focus, outPath):
+        focusPath = self.tmpDir+"focusPath/"
+        os.mkdir(focusPath)
+        refocusedPath = focusPath+"refocused/"
+        os.mkdir(refocusedPath)
+        self.refocusImages(self.inputDir, refocusedPath, focus)
+        meanImagePath = focusPath+"meanImage.png"
+        subtractionPath = focusPath+"subtraction/"
+        os.mkdir(subtractionPath)
+        self.runBash(self.IMConvertPath+" "+refocusedPath+"/* -set colorspace Gray -evaluate-sequence mean "+meanImagePath)
+        for f in self.inputFiles:
+            self.runBash(self.IMMagickPath+" "+meanImagePath+" "+refocusedPath+f+" -set colorspace Gray -fx \"abs(u-v)\" "+subtractionPath+f)
+        self.runBash(self.IMConvertPath+" "+subtractionPath+"/* -evaluate-sequence mean "+outPath)
+        shutil.rmtree(focusPath)
+
+    def getNoBackgroundFocusMap(self, focus, outPath):
+        bckgFocusPath = self.tmpDir+"bckgFocus.png"
+        focusPath = self.tmpDir+"focus.png"
+        rawMapPath = self.tmpDir+"rawMap.png"
+        self.getFocusMap(0, bckgFocusPath)
+        self.getFocusMap(focus, focusPath)
+        self.runBash(self.IMMagickPath+" "+bckgFocusPath+" "+focusPath+" -fx \"(1.0-u)+v\" "+rawMapPath)
+        self.runBash(self.IMConvertPath+" "+rawMapPath+" -auto-level -negate "+outPath)
 
     def dogFocusing(self):
         testDir = self.tmpDir+"dog/"
@@ -126,7 +150,10 @@ class Convertor:
             if energy < minimal[0]:
                 minimal = [energy, f]
             shutil.rmtree(testDir)
-        return minimal[1], [0,0]
+        focusMapPath = self.tmpDir+"dogFocusMap.png"
+        self.getNoBackgroundFocusMap(minimal[1], focusMapPath)
+        focusingPoint = self.getCenterCoordinate(focusMapPath)
+        return minimal[1], focusingPoint
 
     def refocusImages(self, inDir, outDir, focus):
         quiltLength = self.quiltResolution[0]*self.quiltResolution[1]
