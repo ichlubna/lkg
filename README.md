@@ -11,3 +11,4 @@ Generates quilts from input files. Is used for automatic focusing experiments.
 * [Camera Distortions User Study](https://github.com/dormon/3DApps/blob/master/src/renderHoloUserStudy.cpp) - paper TBD
 * [Quilt Detector](https://github.com/dormon/3DApps/blob/master/src/quiltDetector.cpp) - paper TBD
 * [Quilt to Native LKG Format Convertor](https://github.com/dormon/3DApps/blob/master/src/quiltToNative.cpp)
+* [Blender LF camera generator (LKG support)](https://github.com/ichlubna/blenderScripts/blob/master/LF/cameras.py)
