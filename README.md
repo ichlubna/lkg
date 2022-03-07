@@ -8,10 +8,11 @@ Generates quilts from input files. Is used for automatic focusing experiments.
 Demo scene with scripted environment for LKG rendering in Blender
 
 ## Additional LKG tools (renderers, convertors...) 
-[Build instructions](https://github.com/dormon/3DApps)
-* [3D Model Renderer](https://github.com/dormon/3DApps/blob/master/src/renderHoloModel.cpp)
-* [Quilt Renderer](https://github.com/dormon/3DApps/blob/master/src/renderHoloFocus.cpp)
-* [Camera Distortions User Study](https://github.com/dormon/3DApps/blob/master/src/renderHoloUserStudy.cpp) - paper TBD
-* [Quilt Detector](https://github.com/dormon/3DApps/blob/master/src/quiltDetector.cpp) - paper TBD
-* [Quilt to Native LKG Format Convertor](https://github.com/dormon/3DApps/blob/master/src/quiltToNative.cpp)
+* [Build instructions](https://github.com/dormon/3DApps)
+  * [Quilt Autofocusing User Study Renderer](https://github.com/dormon/3DApps/blob/master/src/renderHoloFocusStudy.cpp)
+  * [3D Model Renderer](https://github.com/dormon/3DApps/blob/master/src/renderHoloModel.cpp)
+  * [Quilt Renderer](https://github.com/dormon/3DApps/blob/master/src/renderHoloFocus.cpp)
+  * [Camera Distortions User Study](https://github.com/dormon/3DApps/blob/master/src/renderHoloUserStudy.cpp) - paper TBD
+  * [Quilt Detector](https://github.com/dormon/3DApps/blob/master/src/quiltDetector.cpp) - paper TBD
+  * [Quilt to Native LKG Format Convertor](https://github.com/dormon/3DApps/blob/master/src/quiltToNative.cpp)
 * [Blender LF camera generator (LKG support)](https://github.com/ichlubna/blenderScripts/blob/master/LF/cameras.py)
