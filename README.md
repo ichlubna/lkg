@@ -4,6 +4,9 @@ Scripts and experimental tools for Looking Glass Holographic display
 ## generateQuilts.py
 Generates quilts from input files. Is used for automatic focusing experiments.
 
+## data/LKGCrashDemo.blend
+Demo scene with scripted environment for LKG rendering in Blender
+
 ## Additional LKG tools (renderers, convertors...) 
 [Build instructions](https://github.com/dormon/3DApps)
 * [3D Model Renderer](https://github.com/dormon/3DApps/blob/master/src/renderHoloModel.cpp)
