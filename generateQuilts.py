@@ -37,10 +37,13 @@ class Convertor:
     tmpDir = ""
     doFocusing = False
     verbose = False
+    limitExport = False
     inputFocus = 0.0
 
-    focusSteps = 10
-    focusRange = 0.4
+    focusSteps = 500
+    focusRange = 0.7
+
+    #GETS RECALCULATED
     focusStep = 0.01
 
     def parseArguments(self):
@@ -53,6 +56,7 @@ class Convertor:
         parser.add_argument('--videoStart', default="00:00:00", nargs='?', help='where should the frames be taken from, hh:mm:ss')
         parser.add_argument('--focus', default="0.0", type=float, nargs='?', help='creates refocused quilt to the specified distance')
         parser.add_argument('-f',  action='store_true', help='performs focusing')
+        parser.add_argument('-l',  action='store_true', help='will not export the basic and autofocused quilts')
         parser.add_argument('-v',  action='store_true', help='prints results of the external commands - debugging')
         args = parser.parse_args()
         self.inputDir = os.path.join(args.inputDir, '')
@@ -62,16 +66,28 @@ class Convertor:
         self.quiltResolution = [int(strQuiltRes[0]), int(strQuiltRes[1])]
         self.videoStart = args.videoStart
         self.doFocusing = args.f
+        self.limitExport = args.l
         self.verbose = args.v
         self.inputFocus = args.focus
         strViewRes = args.viewSize.split('x')
         self.viewResolution = [int(strViewRes[0]), int(strViewRes[1])]
+
+    def changeSuffix(self, name, extension):
+        return os.path.splitext(name)[0]+extension
 
     def analyzeInput(self):
         if(self.inputVideo):
             self.inputDir = self.tmpDir+"videoFrames/"
             os.mkdir(self.inputDir)
             self.runBash(self.FFmpegPath+" -i "+self.inputVideo+" -ss "+self.videoStart+" -frames:v 45 "+self.inputDir+"%04d.png")
+        else:
+            originalInput = self.inputDir
+            inFiles = sorted(os.listdir(self.inputDir))
+            self.inputDir = self.tmpDir+"frames/"
+            os.mkdir(self.inputDir)
+            for f in inFiles:
+               self.runBash(self.IMConvertPath+" "+originalInput+f+" "+self.inputDir+self.changeSuffix(f, ".png"))
+            self.inputFiles = sorted(os.listdir(self.inputDir))
         self.inputFiles = sorted(os.listdir(self.inputDir))
         if len(self.inputFiles) != self.quiltResolution[0]*self.quiltResolution[1]:
             raise Exception("Wrong number of images in the input folder, expected "+str(self.quiltResolution[0])+"x"+str(self.quiltResolution[1])+" quilt")
@@ -79,7 +95,7 @@ class Convertor:
             originalInput = self.inputDir
             self.inputDir = self.tmpDir+"resized/"
             os.mkdir(self.inputDir)
-            for f in inputFiles:
+            for f in self.inputFiles:
                self.runBash(self.IMConvertPath+" "+originalInput+f+" -resize "+str(self.viewResolution[0])+"x"+str(self.viewResolution[1])+" "+self.inputDir+f )
         self.inputExtension = os.path.splitext(self.inputFiles[0])[1]
         result = self.runBash(self.IMIdentifyPath+" -format %[fx:w]|%[fx:h] "+self.inputDir+self.inputFiles[0])
@@ -111,7 +127,7 @@ class Convertor:
     def getCenterCoordinate(self, path):
         centerImagePath = self.tmpDir+"centerImage.png"
         #maybe dilate
-        result = self.runBash("convert "+path+" -threshold 50% -median 20 -type bilevel txt:-")
+        result = self.runBash("convert "+path+" -threshold 40% -median 20 -type bilevel txt:-")
         pixels = result.stdout.splitlines()
         del result
         xCoords = []
@@ -205,7 +221,6 @@ class Convertor:
         inSalDir = self.tmpDir+"inSalDir/"
         os.mkdir(inSalDir)
         inSalTestDir = inSalDir+"test/"
-        saliencyTestDir = saliencyDir+"test/"
         os.mkdir(inSalTestDir)
         resultingSaliencyMap = self.tmpDir+"saliencyMap.png"
         for f in self.inputFiles:
@@ -217,7 +232,7 @@ class Convertor:
         for i in range(0, self.focusSteps):
             f = -self.focusRange+i*self.focusStep
             os.mkdir(refSalDir)
-            self.refocusImages(saliencyTestDir, refSalDir, f)
+            self.refocusImages(saliencyDir+"/test/", refSalDir, f)
             self.runBash(self.IMConvertPath+" "+refSalDir+"* -background None -compose Multiply -layers Flatten "+saliencySumPath)
             energy = self.averageImageEnergy(saliencySumPath)
             if energy > maximal[0]:
@@ -231,14 +246,18 @@ class Convertor:
     def run(self):
         self.parseArguments()
         self.analyzeInput()
-        #self.exportQuiltImage(self.inputDir, self.outputDir, "basicQuilt.png")
+        if not self.limitExport:
+            self.exportQuiltImage(self.inputDir, self.outputDir, "basicQuilt.png")
         if(self.inputFocus != 0.0):
             self.refocusAndExport(self.outputDir, "refocusedQuilt-"+str(self.inputFocus)+".png", self.inputFocus)
         if(self.doFocusing):
             dogFocus, dogPoint = self.dogFocusing()
-            self.refocusAndExport(self.outputDir, "dogRefocusedQuilt-"+str(round(dogFocus,4))+".png", dogFocus, dogPoint)
             deepFocus, deepPoint = self.deepFocusing()
-            self.refocusAndExport(self.outputDir, "deepRefocusedQuilt-"+str(round(deepFocus,4))+".png", deepFocus, deepPoint)
+            print("DoG focus: "+str(dogFocus))
+            print("Deep focus: "+str(deepFocus))
+            if not self.limitExport:
+                self.refocusAndExport(self.outputDir, "dogRefocusedQuilt-"+str(round(dogFocus,4))+".png", dogFocus, dogPoint)
+                self.refocusAndExport(self.outputDir, "deepRefocusedQuilt-"+str(round(deepFocus,4))+".png", deepFocus, deepPoint)
 
     def __init__(self):
         self.tmpDir = os.path.join(tempfile.mkdtemp(), '')
@@ -246,6 +265,7 @@ class Convertor:
 
     def __del__(self):
         shutil.rmtree(self.tmpDir)
+        return
 
 c = Convertor()
 try:
