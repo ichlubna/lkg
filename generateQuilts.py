@@ -40,8 +40,8 @@ class Convertor:
     limitExport = False
     inputFocus = 0.0
 
-    focusSteps = 500
-    focusRange = 0.7
+    focusSteps = 100
+    focusRange = 2.0
 
     #GETS RECALCULATED
     focusStep = 0.01
@@ -56,7 +56,7 @@ class Convertor:
         parser.add_argument('--videoStart', default="00:00:00", nargs='?', help='where should the frames be taken from, hh:mm:ss')
         parser.add_argument('--focus', default="0.0", type=float, nargs='?', help='creates refocused quilt to the specified distance')
         parser.add_argument('-f',  action='store_true', help='performs focusing')
-        parser.add_argument('-l',  action='store_true', help='will not export the basic and autofocused quilts')
+        parser.add_argument('-l',  action='store_true', help='will not export the autofocused quilts')
         parser.add_argument('-v',  action='store_true', help='prints results of the external commands - debugging')
         args = parser.parse_args()
         self.inputDir = os.path.join(args.inputDir, '')
@@ -85,18 +85,15 @@ class Convertor:
             inFiles = sorted(os.listdir(self.inputDir))
             self.inputDir = self.tmpDir+"frames/"
             os.mkdir(self.inputDir)
+            resizeOption = ""
+            if(self.viewResolution[0] > 0):
+                resizeOption = "-resize "+str(self.viewResolution[0])+"x"+str(self.viewResolution[1])
             for f in inFiles:
-               self.runBash(self.IMConvertPath+" "+originalInput+f+" "+self.inputDir+self.changeSuffix(f, ".png"))
+               self.runBash(self.IMConvertPath+" "+originalInput+f+" "+resizeOption+" "+self.inputDir+self.changeSuffix(f, ".png"))
             self.inputFiles = sorted(os.listdir(self.inputDir))
         self.inputFiles = sorted(os.listdir(self.inputDir))
         if len(self.inputFiles) != self.quiltResolution[0]*self.quiltResolution[1]:
             raise Exception("Wrong number of images in the input folder, expected "+str(self.quiltResolution[0])+"x"+str(self.quiltResolution[1])+" quilt")
-        if(self.viewResolution[0] > 0):
-            originalInput = self.inputDir
-            self.inputDir = self.tmpDir+"resized/"
-            os.mkdir(self.inputDir)
-            for f in self.inputFiles:
-               self.runBash(self.IMConvertPath+" "+originalInput+f+" -resize "+str(self.viewResolution[0])+"x"+str(self.viewResolution[1])+" "+self.inputDir+f )
         self.inputExtension = os.path.splitext(self.inputFiles[0])[1]
         result = self.runBash(self.IMIdentifyPath+" -format %[fx:w]|%[fx:h] "+self.inputDir+self.inputFiles[0])
         strRes = result.stdout.split('|')
@@ -174,20 +171,44 @@ class Convertor:
         testDir = self.tmpDir+"dog/"
         testImagePath = testDir+"testFocus.png"
         testDogPath = testDir+"testDog.png"
-        minimal = [99999999.0, 0]
+        avg = 0
+        values = []
         for i in range(0, self.focusSteps):
             f = -self.focusRange+i*self.focusStep
             os.mkdir(testDir)
+            #subtraction method
+            #testImagePathB = testDir+"testFocusB.png"
+            #self.runBash(self.quiltToNativePath+" --input "+self.outputDir+"basicQuilt.png --focus "+str(f)+" --pitch 350 --output "+testImagePath)
+            #self.runBash(self.quiltToNativePath+" --input "+self.outputDir+"basicQuilt.png --focus "+str(f)+" --pitch 400 --output "+testImagePathB)
+            #self.runBash(self.IMConvertPath+" "+testImagePath+"  -colorspace Gray "+testImagePathB+" -colorspace Gray -compose minus -composite "+testDogPath)
             self.runBash(self.quiltToNativePath+" --input "+self.outputDir+"basicQuilt.png --focus "+str(f)+" --output "+testImagePath)
             self.runBash(self.IMConvertPath+" "+testImagePath+" -colorspace Gray -morphology Convolve DoG:10,0,10 -tint 0 "+testDogPath)
             energy = self.averageImageEnergy(testDogPath)
-            if energy < minimal[0]:
-                minimal = [energy, f]
             shutil.rmtree(testDir)
+            #print(str(f)+","+str(energy))
+            values.append([f, energy])
+            avg += energy
+
+        MAX = 999999999.0
+        avg /= self.focusSteps
+        for i in range(len(values)):
+            if(values[i][1] > avg):
+                break
+            values[i][1] = MAX
+        for i in range(len(values)):
+            j=len(values)-i-1
+            if(values[j][1] > avg):
+                break
+            values[j][1] = MAX
+
+        minimal = [0, MAX]
+        for v in values:
+            if v[1] < minimal[1]:
+                minimal = v
         focusMapPath = self.tmpDir+"dogFocusMap.png"
-        self.getNoBackgroundFocusMap(minimal[1], focusMapPath)
+        self.getNoBackgroundFocusMap(minimal[0], focusMapPath)
         focusingPoint = self.getCenterCoordinate(focusMapPath)
-        return minimal[1], focusingPoint
+        return minimal[0], focusingPoint
 
     def refocusImages(self, inDir, outDir, focus):
         quiltLength = self.quiltResolution[0]*self.quiltResolution[1]
@@ -246,8 +267,7 @@ class Convertor:
     def run(self):
         self.parseArguments()
         self.analyzeInput()
-        if not self.limitExport:
-            self.exportQuiltImage(self.inputDir, self.outputDir, "basicQuilt.png")
+        self.exportQuiltImage(self.inputDir, self.outputDir, "basicQuilt.png")
         if(self.inputFocus != 0.0):
             self.refocusAndExport(self.outputDir, "refocusedQuilt-"+str(self.inputFocus)+".png", self.inputFocus)
         if(self.doFocusing):
