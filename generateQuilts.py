@@ -8,6 +8,7 @@ import shlex
 import traceback
 import re
 import math
+import time
 
 class Convertor:
     #https://github.com/zzhanghub/gicd/tree/b58759141b61ff7aec9affbbfe704a4418736ff5
@@ -52,12 +53,13 @@ class Convertor:
         parser.add_argument('--inputVideo', default="", help='input video file - overwrites the directory')
         parser.add_argument('--outputDir', default="./", nargs='?', help='output directory')
         parser.add_argument('--quiltSize', default="5x9", nargs='?', help='size of the quilt in images, WxH')
-        parser.add_argument('--viewSize', default="1280x720", nargs='?', help='resolution of one view in pixels, WxH')
+        parser.add_argument('--viewSize', default="0x0", nargs='?', help='resolution of one view in pixels, WxH')
         parser.add_argument('--videoStart', default="00:00:00", nargs='?', help='where should the frames be taken from, hh:mm:ss')
         parser.add_argument('--focus', default="0.0", type=float, nargs='?', help='creates refocused quilt to the specified distance')
         parser.add_argument('-f',  action='store_true', help='performs focusing')
         parser.add_argument('-l',  action='store_true', help='will not export the autofocused quilts')
         parser.add_argument('-v',  action='store_true', help='prints results of the external commands - debugging')
+        parser.add_argument('-s',  default="200", type=int, help='focus steps - density of sampling - higher = slower but more precise')
         args = parser.parse_args()
         self.inputDir = os.path.join(args.inputDir, '')
         self.inputVideo = args.inputVideo
@@ -68,6 +70,7 @@ class Convertor:
         self.doFocusing = args.f
         self.limitExport = args.l
         self.verbose = args.v
+        self.focusSteps = args.s
         self.inputFocus = args.focus
         strViewRes = args.viewSize.split('x')
         self.viewResolution = [int(strViewRes[0]), int(strViewRes[1])]
@@ -76,16 +79,20 @@ class Convertor:
         return os.path.splitext(name)[0]+extension
 
     def analyzeInput(self):
+        resizeOption = ""
         if(self.inputVideo):
+            print("Processing: "+self.inputVideo)
             self.inputDir = self.tmpDir+"videoFrames/"
             os.mkdir(self.inputDir)
-            self.runBash(self.FFmpegPath+" -i "+self.inputVideo+" -ss "+self.videoStart+" -frames:v 45 "+self.inputDir+"%04d.png")
+            if(self.viewResolution[0] > 0):
+                resizeOption = " -vf \"scale="+str(self.viewResolution[0])+"x"+str(self.viewResolution[1])+"\" "
+            self.runBash(self.FFmpegPath+" -i "+self.inputVideo+" -ss "+self.videoStart+" -frames:v 45 "+resizeOption+self.inputDir+"%04d.png")
         else:
+            print("Processing: "+self.inputDir)
             originalInput = self.inputDir
             inFiles = sorted(os.listdir(self.inputDir))
             self.inputDir = self.tmpDir+"frames/"
             os.mkdir(self.inputDir)
-            resizeOption = ""
             if(self.viewResolution[0] > 0):
                 resizeOption = "-resize "+str(self.viewResolution[0])+"x"+str(self.viewResolution[1])
             for f in inFiles:
@@ -134,7 +141,10 @@ class Convertor:
                coords = pixel.split(":")[0].split(",")
                xCoords.append(int(coords[0]))
                yCoords.append(int(coords[1]))
-        avg = [sum(xCoords) / len(xCoords), sum(yCoords) / len(yCoords)]
+        if len(xCoords) == 0 or len(yCoords) == 0:
+            avg = [0,0]
+        else:
+            avg = [sum(xCoords) / len(xCoords), sum(yCoords) / len(yCoords)]
         closest = [[0,0],9999999]
         for i in range(0, len(xCoords)):
             coords = [xCoords[i], yCoords[i]]
@@ -168,6 +178,8 @@ class Convertor:
         self.runBash(self.IMConvertPath+" "+rawMapPath+" -auto-level -negate "+outPath)
 
     def dogFocusing(self):
+        startTime = time.time()
+
         testDir = self.tmpDir+"dog/"
         testImagePath = testDir+"testFocus.png"
         testDogPath = testDir+"testDog.png"
@@ -181,7 +193,7 @@ class Convertor:
             #self.runBash(self.quiltToNativePath+" --input "+self.outputDir+"basicQuilt.png --focus "+str(f)+" --pitch 350 --output "+testImagePath)
             #self.runBash(self.quiltToNativePath+" --input "+self.outputDir+"basicQuilt.png --focus "+str(f)+" --pitch 400 --output "+testImagePathB)
             #self.runBash(self.IMConvertPath+" "+testImagePath+"  -colorspace Gray "+testImagePathB+" -colorspace Gray -compose minus -composite "+testDogPath)
-            self.runBash(self.quiltToNativePath+" --input "+self.outputDir+"basicQuilt.png --focus "+str(f)+" --output "+testImagePath)
+            self.runBash(self.quiltToNativePath+" --input "+self.outputDir+"basicQuilt.png --focus "+str(f)+" --width "+str(self.imageResolution[0])+" --height "+str(self.imageResolution[1])+" --output "+testImagePath)
             self.runBash(self.IMConvertPath+" "+testImagePath+" -colorspace Gray -morphology Convolve DoG:10,0,10 -tint 0 "+testDogPath)
             energy = self.averageImageEnergy(testDogPath)
             shutil.rmtree(testDir)
@@ -205,9 +217,15 @@ class Convertor:
         for v in values:
             if v[1] < minimal[1]:
                 minimal = v
+
+        print("DoG scan time: "+str(time.time()-startTime))
+
+        startTime = time.time()
         focusMapPath = self.tmpDir+"dogFocusMap.png"
         self.getNoBackgroundFocusMap(minimal[0], focusMapPath)
         focusingPoint = self.getCenterCoordinate(focusMapPath)
+        print("DoG focus point time: "+str(time.time()-startTime))
+
         return minimal[0], focusingPoint
 
     def refocusImages(self, inDir, outDir, focus):
@@ -216,10 +234,13 @@ class Convertor:
             imageFocus = focus*(1.0-2*i/quiltLength)*self.imageResolution[0]
             self.runBash(self.IMConvertPath+" -distort ScaleRotateTranslate '0,0 1 0 "+str(-imageFocus)+",0' -virtual-pixel edge "+inDir+self.inputFiles[i]+" "+outDir+self.inputFiles[i])
 
-    def dofImages(self, inDir, outDir, coords):
+    def dofImages(self, inDir, outDir, coords): 
         for f in self.inputFiles:
             inputFilePath = self.deepLensPath+"data/imgs/"+f
-            shutil.copy(inDir+f, inputFilePath)
+            if(self.imageResolution[0] > 1920):
+                self.runBash(self.IMConvertPath+" -geometry 1920x "+inDir+f+" "+inputFilePath)
+            else:
+                shutil.copy(inDir+f, inputFilePath)
             r = self.runBash("python2.7 "+"eval.py "+str(coords[0])+" "+str(coords[1]), self.deepLensPath)
             shutil.move(self.deepLensPath+"test.png", outDir+f)
             os.remove(inputFilePath)
@@ -237,6 +258,8 @@ class Convertor:
         shutil.rmtree(refocusDir)
 
     def deepFocusing(self):
+        startTime = time.time()
+
         saliencyDir = self.tmpDir+"saliency/"
         os.mkdir(saliencyDir)
         inSalDir = self.tmpDir+"inSalDir/"
@@ -261,7 +284,13 @@ class Convertor:
                 shutil.copy(saliencySumPath, resultingSaliencyMap)
             shutil.rmtree(refSalDir)
         shutil.rmtree(saliencyDir)
+
+        print("Deep scan time: "+str(time.time()-startTime))
+
+        startTime = time.time()
         focusingPoint = self.getCenterCoordinate(resultingSaliencyMap)
+        print("Deep focus point time: "+str(time.time()-startTime))
+
         return maximal[1], focusingPoint
 
     def run(self):
