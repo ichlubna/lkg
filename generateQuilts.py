@@ -42,7 +42,7 @@ class Convertor:
     inputFocus = 0.0
 
     focusSteps = 100
-    focusRange = 2.0
+    focusRange = 1.0
 
     #GETS RECALCULATED
     focusStep = 0.01
@@ -79,6 +79,7 @@ class Convertor:
         return os.path.splitext(name)[0]+extension
 
     def analyzeInput(self):
+        self.focusStep = 2*self.focusRange/self.focusSteps
         resizeOption = ""
         if(self.inputVideo):
             print("Processing: "+self.inputVideo)
@@ -121,7 +122,11 @@ class Convertor:
 
     def averageImageEnergy(self, path):
         result = self.runBash(self.IMConvertPath+" "+path+" -resize 1x1 txt:-")
-        energy = float(re.search(r'\((.*?)\)',result.stdout).group(1))
+        #result = self.runBash(self.IMConvertPath+" "+path+" -resize 1x1 -format \"%[fx:int(255*r+.5)]\" info:-")
+        #energy = float(result.stdout)
+        energy = float(re.search(r'\((.*?)\)',result.stdout).group(1).split(",")[0])
+        #energy = float(re.search(r'\((.*?)\)',result.stdout).group(1))
+
         return energy
 
     def distance(self, vec1, vec2):
@@ -234,7 +239,7 @@ class Convertor:
             imageFocus = focus*(1.0-2*i/quiltLength)*self.imageResolution[0]
             self.runBash(self.IMConvertPath+" -distort ScaleRotateTranslate '0,0 1 0 "+str(-imageFocus)+",0' -virtual-pixel edge "+inDir+self.inputFiles[i]+" "+outDir+self.inputFiles[i])
 
-    def dofImages(self, inDir, outDir, coords): 
+    def dofImages(self, inDir, outDir, coords):
         for f in self.inputFiles:
             inputFilePath = self.deepLensPath+"data/imgs/"+f
             if(self.imageResolution[0] > 1920):
@@ -277,7 +282,11 @@ class Convertor:
             f = -self.focusRange+i*self.focusStep
             os.mkdir(refSalDir)
             self.refocusImages(saliencyDir+"/test/", refSalDir, f)
-            self.runBash(self.IMConvertPath+" "+refSalDir+"* -background None -compose Multiply -layers Flatten "+saliencySumPath)
+            #self.runBash(self.IMConvertPath+" "+refSalDir+"* -background None -compose Multiply -layers Flatten "+saliencySumPath)
+            #self.runBash(self.IMConvertPath+" "+refSalDir+"*  -background None -evaluate-sequence Mean -layers Flatten "+saliencySumPath)
+            #thresValue = self.runBash(self.IMConvertPath+" "+saliencySumPath+" -format \"%[fx:maxima*100*0.5]\" info:").stdout
+            #self.runBash(self.IMConvertPath+" "+saliencySumPath+" -threshold "+thresValue+"% -type bilevel "+saliencySumThresPath)
+            self.runBash(self.IMConvertPath+" "+refSalDir+"* -evaluate-sequence median "+saliencySumPath)
             energy = self.averageImageEnergy(saliencySumPath)
             if energy > maximal[0]:
                 maximal = [energy, f]
@@ -302,15 +311,14 @@ class Convertor:
         if(self.doFocusing):
             dogFocus, dogPoint = self.dogFocusing()
             deepFocus, deepPoint = self.deepFocusing()
-            print("DoG focus: "+str(dogFocus))
-            print("Deep focus: "+str(deepFocus))
+            print("DoG focus: "+str(dogFocus)+", focus point: "+str(dogPoint))
+            print("Deep focus: "+str(deepFocus)+", focus point: "+str(deepPoint))
             if not self.limitExport:
                 self.refocusAndExport(self.outputDir, "dogRefocusedQuilt-"+str(round(dogFocus,4))+".png", dogFocus, dogPoint)
                 self.refocusAndExport(self.outputDir, "deepRefocusedQuilt-"+str(round(deepFocus,4))+".png", deepFocus, deepPoint)
 
     def __init__(self):
         self.tmpDir = os.path.join(tempfile.mkdtemp(), '')
-        self.focusStep = 2*self.focusRange/self.focusSteps
 
     def __del__(self):
         shutil.rmtree(self.tmpDir)
