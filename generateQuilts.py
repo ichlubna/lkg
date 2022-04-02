@@ -40,6 +40,7 @@ class Convertor:
     verbose = False
     limitExport = False
     inputFocus = 0.0
+    dofInput = [-999, -999]
 
     focusSteps = 100
     focusRange = 1.0
@@ -56,6 +57,7 @@ class Convertor:
         parser.add_argument('--viewSize', default="0x0", nargs='?', help='resolution of one view in pixels, WxH')
         parser.add_argument('--videoStart', default="00:00:00", nargs='?', help='where should the frames be taken from, hh:mm:ss')
         parser.add_argument('--focus', default="0.0", type=float, nargs='?', help='creates refocused quilt to the specified distance')
+        parser.add_argument('--dof', default="-999,-999", nargs='?', help='simulates DoF for the given focusing using both methods')
         parser.add_argument('-f',  action='store_true', help='performs focusing')
         parser.add_argument('-l',  action='store_true', help='will not export the autofocused quilts')
         parser.add_argument('-v',  action='store_true', help='prints results of the external commands - debugging')
@@ -66,6 +68,8 @@ class Convertor:
         self.outputDir = os.path.join(args.outputDir, '')
         strQuiltRes = args.quiltSize.split('x')
         self.quiltResolution = [int(strQuiltRes[0]), int(strQuiltRes[1])]
+        strDof = args.dof.split(',')
+        self.dof = [float(strDof[0]), float(strDof[1])]
         self.videoStart = args.videoStart
         self.doFocusing = args.f
         self.limitExport = args.l
@@ -262,6 +266,19 @@ class Convertor:
             self.exportQuiltImage(dofDir, outDir, "DoF"+name)
         shutil.rmtree(refocusDir)
 
+    def saliency(self, f, saliencySumPath):
+        refSalDir = self.tmpDir+"refSal/"
+        os.mkdir(refSalDir)
+        self.refocusImages(saliencyDir+"/test/", refSalDir, f)
+        #self.runBash(self.IMConvertPath+" "+refSalDir+"* -background None -compose Multiply -layers Flatten "+saliencySumPath)
+        #self.runBash(self.IMConvertPath+" "+refSalDir+"*  -background None -evaluate-sequence Mean -layers Flatten "+saliencySumPath)
+        #thresValue = self.runBash(self.IMConvertPath+" "+saliencySumPath+" -format \"%[fx:maxima*100*0.5]\" info:").stdout
+        #self.runBash(self.IMConvertPath+" "+saliencySumPath+" -threshold "+thresValue+"% -type bilevel "+saliencySumThresPath)
+        self.runBash(self.IMConvertPath+" "+refSalDir+"* -evaluate-sequence median "+saliencySumPath)
+        energy = self.averageImageEnergy(saliencySumPath)
+        shutil.rmtree(refSalDir)
+        return energy
+
     def deepFocusing(self):
         startTime = time.time()
 
@@ -280,18 +297,10 @@ class Convertor:
         maximal = [-99999999.0, 0]
         for i in range(0, self.focusSteps):
             f = -self.focusRange+i*self.focusStep
-            os.mkdir(refSalDir)
-            self.refocusImages(saliencyDir+"/test/", refSalDir, f)
-            #self.runBash(self.IMConvertPath+" "+refSalDir+"* -background None -compose Multiply -layers Flatten "+saliencySumPath)
-            #self.runBash(self.IMConvertPath+" "+refSalDir+"*  -background None -evaluate-sequence Mean -layers Flatten "+saliencySumPath)
-            #thresValue = self.runBash(self.IMConvertPath+" "+saliencySumPath+" -format \"%[fx:maxima*100*0.5]\" info:").stdout
-            #self.runBash(self.IMConvertPath+" "+saliencySumPath+" -threshold "+thresValue+"% -type bilevel "+saliencySumThresPath)
-            self.runBash(self.IMConvertPath+" "+refSalDir+"* -evaluate-sequence median "+saliencySumPath)
-            energy = self.averageImageEnergy(saliencySumPath)
+            energy = saliency(f, saliencySumPath)
             if energy > maximal[0]:
                 maximal = [energy, f]
                 shutil.copy(saliencySumPath, resultingSaliencyMap)
-            shutil.rmtree(refSalDir)
         shutil.rmtree(saliencyDir)
 
         print("Deep scan time: "+str(time.time()-startTime))
@@ -302,9 +311,24 @@ class Convertor:
 
         return maximal[1], focusingPoint
 
+    def generateNewDoF(self, dogFocus, deepFocus):
+        resultingSaliencyMap = self.tmpDir+"saliencyMap.png"
+        resultingSaliencyMap = self.saliency(deepFocus, resultingSaliencyMap)
+        dogPoint = self.getCenterCoordinate(resultingSaliencyMap)
+
+        focusMapPath = self.tmpDir+"dogFocusMap.png"
+        self.getNoBackgroundFocusMap(dogFocus, focusMapPath)
+        deepPoint = self.getCenterCoordinate(focusMapPath)
+
+        self.refocusAndExport(self.outputDir, "dogRefocusedQuilt-"+str(round(dogFocus,4))+".png", dogFocus, dogPoint)
+        self.refocusAndExport(self.outputDir, "deepRefocusedQuilt-"+str(round(deepFocus,4))+".png", deepFocus, deepPoint)
+
     def run(self):
         self.parseArguments()
         self.analyzeInput()
+        if(self.dof[0] > -100)
+            generateNewDoF(self.dof[0], self.dof[1])
+            return
         self.exportQuiltImage(self.inputDir, self.outputDir, "basicQuilt.png")
         if(self.inputFocus != 0.0):
             self.refocusAndExport(self.outputDir, "refocusedQuilt-"+str(self.inputFocus)+".png", self.inputFocus)
