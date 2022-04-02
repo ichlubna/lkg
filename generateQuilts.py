@@ -266,8 +266,8 @@ class Convertor:
             self.exportQuiltImage(dofDir, outDir, "DoF"+name)
         shutil.rmtree(refocusDir)
 
-    def saliency(self, f, saliencySumPath):
-        refSalDir = self.tmpDir+"refSal/"
+    def saliency(self, f, saliencySumPath, saliencyDir):
+        refSalDir = self.tmpDir+""+"refSal/"
         os.mkdir(refSalDir)
         self.refocusImages(saliencyDir+"/test/", refSalDir, f)
         #self.runBash(self.IMConvertPath+" "+refSalDir+"* -background None -compose Multiply -layers Flatten "+saliencySumPath)
@@ -279,19 +279,24 @@ class Convertor:
         shutil.rmtree(refSalDir)
         return energy
 
+    def generateSaliencyMaps(self, saliencyDir):
+        rootSalDir = self.tmpDir+"salTest/"
+        refSalDir = rootSalDir+"test/"
+        os.mkdir(rootSalDir)
+        os.mkdir(refSalDir)
+        resultingSaliencyMap = self.tmpDir+"saliencyMap.png"
+        for f in self.inputFiles:
+            shutil.copy(self.inputDir+f, refSalDir)
+        r=self.runBash("python "+self.gicdPath+"test.py --model GICD --input_root "+rootSalDir+" --param_path "+self.gicdPath+"gicd_ginet.pth --save_root "+saliencyDir)
+        shutil.rmtree(rootSalDir)
+
+
     def deepFocusing(self):
         startTime = time.time()
 
         saliencyDir = self.tmpDir+"saliency/"
         os.mkdir(saliencyDir)
-        inSalDir = self.tmpDir+"inSalDir/"
-        os.mkdir(inSalDir)
-        inSalTestDir = inSalDir+"test/"
-        os.mkdir(inSalTestDir)
-        resultingSaliencyMap = self.tmpDir+"saliencyMap.png"
-        for f in self.inputFiles:
-            shutil.copy(self.inputDir+f, inSalTestDir)
-        r=self.runBash("python "+self.gicdPath+"test.py --model GICD --input_root "+inSalDir+" --param_path "+self.gicdPath+"gicd_ginet.pth --save_root "+saliencyDir)
+        self.generateSaliencyMaps(saliencyDir)
         refSalDir = self.tmpDir+"refSal/"
         saliencySumPath = self.tmpDir+"saliencySum.png"
         maximal = [-99999999.0, 0]
@@ -300,7 +305,7 @@ class Convertor:
             energy = saliency(f, saliencySumPath)
             if energy > maximal[0]:
                 maximal = [energy, f]
-                shutil.copy(saliencySumPath, resultingSaliencyMap)
+                shutil.copy(saliencySumPath, resultingSaliencyMap, saliencyDir)
         shutil.rmtree(saliencyDir)
 
         print("Deep scan time: "+str(time.time()-startTime))
@@ -313,7 +318,10 @@ class Convertor:
 
     def generateNewDoF(self, dogFocus, deepFocus):
         resultingSaliencyMap = self.tmpDir+"saliencyMap.png"
-        resultingSaliencyMap = self.saliency(deepFocus, resultingSaliencyMap)
+        saliencyDir = self.tmpDir+"saliency/"
+        os.mkdir(saliencyDir)
+        self.generateSaliencyMaps(saliencyDir)
+        self.saliency(deepFocus, resultingSaliencyMap, saliencyDir)
         dogPoint = self.getCenterCoordinate(resultingSaliencyMap)
 
         focusMapPath = self.tmpDir+"dogFocusMap.png"
@@ -326,8 +334,8 @@ class Convertor:
     def run(self):
         self.parseArguments()
         self.analyzeInput()
-        if(self.dof[0] > -100)
-            generateNewDoF(self.dof[0], self.dof[1])
+        if(self.dof[0] > -100):
+            self.generateNewDoF(self.dof[0], self.dof[1])
             return
         self.exportQuiltImage(self.inputDir, self.outputDir, "basicQuilt.png")
         if(self.inputFocus != 0.0):
@@ -354,3 +362,4 @@ try:
 except Exception as e:
     print(e)
     print(traceback.format_exc())
+
