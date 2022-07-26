@@ -7,6 +7,9 @@ Generates quilts from input files. Is used for automatic focusing experiments.
 ## data/LKGCrashDemo.blend
 Demo scene with scripted environment for LKG rendering in Blender
 
+## processData.py
+Script to process the measured data from the Autofocusing User Study renderer below.
+
 ## Additional LKG tools (renderers, convertors...) 
 * 3D Apps toolkit - [Build instructions](https://github.com/dormon/3DApps)
   * [Quilt Autofocusing User Study Renderer](https://github.com/dormon/3DApps/blob/master/src/renderHoloFocusStudy.cpp)
