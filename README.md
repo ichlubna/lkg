@@ -10,6 +10,10 @@ Demo scene with scripted environment for LKG rendering in Blender
 ## processData.py
 Script to process the measured data from the Autofocusing User Study renderer below.
 
+## Scene warping script for Blender
+Warps the scene while keeping the same relative positions of vertices from the camera view. Reduces the depth range of the scene to widen the focusing range on LKG.
+[Available here](https://github.com/ichlubna/blenderScripts/blob/master/MISC/scaleOptical.py)
+
 ## Additional LKG tools (renderers, convertors...) 
 * 3D Apps toolkit - [Build instructions](https://github.com/dormon/3DApps)
   * [Quilt Autofocusing User Study Renderer](https://github.com/dormon/3DApps/blob/master/src/renderHoloFocusStudy.cpp)
