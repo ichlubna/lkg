@@ -72,6 +72,8 @@ warpResults=dict()
 warpResultsExt=dict()
 rangeResults=dict()
 focusResults=dict()
+startFocusCount=0
+endFocusCount=0
 
 def addToSelectionDict(inDict, indexA, indexB):
     try:
@@ -105,6 +107,8 @@ def getVariance(values):
     return variance
 
 def clusterRange(index):
+    global startFocusCount
+    global endFocusCount
     start = 0.5
     end = refRange[index]
     startValues = []
@@ -114,8 +118,10 @@ def clusterRange(index):
         endDistance = abs(val-end)
         if startDistance < endDistance:
             startValues.append(val)
+            startFocusCount += 1
         else:
             endValues.append(val)
+            endFocusCount += 1
     return getVariance(rangeResults[index]), 0.5*(getVariance(startValues)+getVariance(endValues))
 
 def rangeToTimes(ranges):
@@ -199,6 +205,11 @@ for rangeName, vals in sorted(rangeResults.items()):
     if rangeVal == 0:
         continue
     print(str(rangeVal) + " " + str(variances[0]) + " " + str(variances[1]))
+print()
+print("Total focusing range clustered")
+totalCount = startFocusCount+endFocusCount
+print("Start: " + str((startFocusCount/totalCount)*100))
+print("End: " + str((endFocusCount/totalCount)*100))
 print()
 print("Focusing: \nscene avg min max dog deep")
 dogDiff=0
