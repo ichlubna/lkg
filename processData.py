@@ -74,6 +74,8 @@ rangeResults=dict()
 focusResults=dict()
 startFocusCount=0
 endFocusCount=0
+dogCloser=0
+deepCloser=0
 
 def addToSelectionDict(inDict, indexA, indexB):
     try:
@@ -84,12 +86,18 @@ def addToSelectionDict(inDict, indexA, indexB):
         inDict[indexA] = {'A' : A, 'B' : B}
 
 def addToFocusDict(inDict, index, value):
+    global dogCloser, deepCloser
     try:
         inDict[index]["avg"] += float(value)
         inDict[index]["min"] = min(float(value),inDict[index]["min"])
         inDict[index]["max"] = max(float(value),inDict[index]["max"])
     except:
         inDict[index] = {"avg" : float(value), "min" : float(value), "max" : float(value)}
+
+    if abs(methods[test]["deep"]-float(value)) < abs(methods[test]["dog"]-float(value)):
+        deepCloser +=1
+    else:
+        dogCloser +=1
 
 def addToRangeDict(inDict, index, value):
     try:
@@ -161,8 +169,8 @@ for measurement in os.listdir(inputPath):
             if "Range" in line:
                 test = re.search('Range(.*)\.png', line).group(1)
                 val = float(line.split(' ')[1])
-                if test == "39":
-                    print("a"+str(val))
+                #if test == "39":
+                #    print("a"+str(val))
                 addToRangeDict(rangeResults, test, val)
             else:
                 test = re.search('Scene(.*)\.png', line).group(1)
@@ -187,14 +195,14 @@ for rangeName, results in sorted(warpResults.items()):
     rangeNames=rangeName.split('-')
     rangeNames[0] = rangeNames[0].replace("Warping","")
     times = rangeToTimes(rangeNames)
-    print(times[0] + "-" + times[1] + " " + str((results['A']/count)*100) + " " + str((results['B']/count)*100))
+    print(times[0] + "/" + times[1] + " " + str((results['A']/count)*100) + " " + str((results['B']/count)*100))
 print()
 print("Extremes: \ntest upperVal lowerVal")
 for rangeName, results in sorted(warpResultsExt.items()):
     rangeNames=rangeName.split('-')
     rangeNames[0] = rangeNames[0].replace("Warping","")
     times = rangeToTimes(rangeNames)
-    print(times[0] + "-" + times[1] + " " + str((results['A']/count)*100) + " " + str((results['B']/count)*100))
+    print(times[0] + "/" + times[1] + " " + str((results['A']/count)*100) + " " + str((results['B']/count)*100))
 print()
 
 print("Focusing results:")
@@ -223,6 +231,12 @@ print("DoG difference: " + str(dogDiff/len(methods)))
 print("Deep difference: " + str(deepDiff/len(methods)))
 print()
 
+totalCloserCount = deepCloser + dogCloser
+print("DoG closer: " + str(100*dogCloser/totalCloserCount))
+print("Deep closer: " + str(100*deepCloser/totalCloserCount))
+print("Total: " + str(totalCloserCount))
+
+print()
 sessionTime /= count
 print("One session time: " + str(sessionTime) + " s = " + str(sessionTime/60) + " m" )
 print("One test time: " + str(sessionTime/TEST_COUNT) + " s")
