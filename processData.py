@@ -140,7 +140,7 @@ def rangeToTimes(ranges):
 for measurement in os.listdir(inputPath):
     count += 1
     f = os.path.join(inputPath, measurement)
-    
+
     with open(f+"/times.txt") as file:
         line = file.readline()
         while line:
@@ -153,28 +153,28 @@ for measurement in os.listdir(inputPath):
            selection = re.search('select/(.*)/', line).group(1)
            if "Warping" in line:
                 if "h.png" in line:
-                    test = re.search('a0(.*)h\.png', line).group(1)
+                    test = re.search('a0(.*)h\\.png', line).group(1)
                     addToSelectionDict(warpResultsExt, test, selection)
                 else:
-                    test = re.search('a0(.*)\.png', line).group(1)
+                    test = re.search('a0(.*)\\.png', line).group(1)
                     addToSelectionDict(warpResults, test, selection)
            else:
-                scene = re.search('b0(.*)\.png', line).group(1)
+                scene = re.search('b0(.*)\\.png', line).group(1)
                 addToSelectionDict(dofResults, scene, selection)
            line = file.readline()
-    
+
     with open(f+"/focusResults.txt") as file:
         line = file.readline()
         while line:
             if "Range" in line:
-                test = re.search('Range(.*)\.png', line).group(1)
+                test = re.search('Range(.*)\\.png', line).group(1)
                 val = float(line.split(' ')[1])
                 #if test == "39":
                 #    print("a"+str(val))
                 addToRangeDict(rangeResults, test, val)
             else:
-                test = re.search('Scene(.*)\.png', line).group(1)
-                addToFocusDict(focusResults, test, line.split(' ')[1])    
+                test = re.search('Scene(.*)\\.png', line).group(1)
+                addToFocusDict(focusResults, test, line.split(' ')[1])
             line = file.readline()
 
 print("DoF results: \nscene nodof dof")
@@ -241,3 +241,41 @@ sessionTime /= count
 print("One session time: " + str(sessionTime) + " s = " + str(sessionTime/60) + " m" )
 print("One test time: " + str(sessionTime/TEST_COUNT) + " s")
 
+def stats(values, title):
+    average = 0
+    count = 0
+    var = 0
+    maxima = -999999999999
+    minima = 999999999999
+    for t, c in values.items():
+        #print(c)
+        print(t + " " +  str(c['avg']) + " " + str(c['min']) + " " + str(c['max']))
+        continue
+        #print(t + " " +  str(v['A']) + " " + str(v['B']))
+        for v in c:
+            print(v)
+            average += v
+            count += 1
+            if v > maxima:
+                maxima = v
+            if v < minima:
+                minima = v
+    average = average/count
+    averageNorm = (average-minima)/(maxima-minima)
+    for t, c in values.items():
+        for v in c:
+            v = (v-minima)/(maxima-minima)
+            var += (v - averageNorm)**2
+    var = var/count
+    print(title)
+    print("Average: " + str(average))
+    print("Variance: " + str(var))
+    print("Maxima: " + str(maxima))
+    print("Minima: " + str(minima))
+
+#print("Statistics:")
+#stats(dofResults, "Nodof vs dof")
+#stats(rangeResults, "Range")
+#stats(warpResults, "Warp")
+#stats(rangeResults.values(), "Range")
+#stats(focusResults, "Focusing")
